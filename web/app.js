@@ -12,7 +12,7 @@
   const initial = () => ({schema:1, read:{}, bookmarks:{}, scores:{}, last:'Q001', positions:{}, theme:'auto', font:18});
   let state = initial(), storageOK = true, offlineReady = false, offlineMessage = '正在准备离线内容', activeQ = null;
   let filters = {query:'', chapter:'', level:'', status:''};
-  let toastTimer, scrollTimer, swRegistration, offlineCheck;
+  let toastTimer, scrollTimer, swRegistration, offlineCheck, installError='';
   const escape = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   function validState(input) {
     if (!input || input.schema !== 1) throw new Error('备份格式不兼容');
@@ -117,10 +117,10 @@
   function settings() {
     const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
     app.innerHTML = `<h1>阅读设置</h1><section class="panel"><h2>适合你的阅读方式</h2><div class="settings-row"><label for="theme">显示模式</label><select id="theme"><option value="auto">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></div><div class="settings-row"><label for="font">正文字号</label><select id="font"><option value="16">较小</option><option value="18">标准</option><option value="20">较大</option><option value="22">大字</option></select></div></section>
-      <section class="panel"><h2>离线学习</h2><p id="offline-detail" class="status-detail">${escape(offlineMessage)}</p><button id="check-offline">检查离线内容</button><p class="meta">240 道完整解答、全部案例与实作都保存在本机。外部参考链接需要联网。系统清理网站数据后，需要重新下载。</p></section>
+      <section class="panel"><h2>离线学习</h2><p id="offline-detail" class="status-detail">${escape(offlineMessage)}</p><button id="check-offline">重新下载离线内容</button><p class="meta">240 道完整解答、全部案例与实作都保存在本机。外部参考链接需要联网。系统清理网站数据后，需要重新下载。</p></section>
       <section class="panel"><h2>${standalone?'已从主屏幕打开':'安装到 iPhone 主屏幕'}</h2><ol class="install-steps"><li>在 iPhone 的 Safari 打开部署后的 HTTPS 地址。</li><li>打开分享菜单，选择“添加到主屏幕”；如有“作为网页 App 打开”，保持开启。</li><li>从主屏幕的新图标打开，等右上角显示“离线已就绪”。</li><li>关闭 Wi-Fi 和蜂窝网络，关闭应用再重新打开，即可验证离线学习。</li></ol><p class="meta">请以主屏幕 App 内的就绪状态为准；Safari 与主屏幕 App 的本地记录可能独立。</p></section>
       <section class="panel"><h2>备份学习记录</h2><p class="meta">进度、书签和自评分只保存在当前设备，不会自动同步。换设备或清理数据前，请导出备份。</p><div class="settings-actions"><button id="export">导出进度与书签</button><button id="import">导入备份并合并</button></div><p class="meta">也可导入电脑版手册导出的自评分 JSON。</p></section>
-      <p class="meta">内容版本 ${escape(data.version)} · 240 道题<br>所有答案默认展开 · 无广告、无统计追踪</p>`;
+      <p class="meta">应用版本 1.0.1 · 内容版本 ${escape(data.version)} · 240 道题<br>所有答案默认展开 · 无广告、无统计追踪</p>`;
     document.getElementById('theme').value=state.theme;
     document.getElementById('font').value=String(state.font);
     document.getElementById('theme').addEventListener('change',e=>{state.theme=e.target.value;theme();save();});
@@ -177,30 +177,78 @@
   }
   function workerStatus(worker,type='CHECK_OFFLINE'){
     return new Promise((resolve,reject)=>{
-      const channel=new MessageChannel();const timer=setTimeout(()=>{channel.port1.close();reject(new Error('检查离线内容超时，请重试'));},type==='REPAIR_OFFLINE'?25000:12000);
+      const channel=new MessageChannel();const timer=setTimeout(()=>{channel.port1.close();reject(new Error('下载用时较长，请稍后重试'));},type==='REPAIR_OFFLINE'?90000:12000);
       channel.port1.onmessage=e=>{clearTimeout(timer);channel.port1.close();resolve(e.data);};
       worker.postMessage({type},[channel.port2]);
+    });
+  }
+  function awaitActive(registration){
+    if(registration.active)return Promise.resolve(registration);
+    return new Promise((resolve,reject)=>{
+      let worker=registration.installing||registration.waiting;
+      const timer=setTimeout(()=>finish(new Error(installError||'下载用时较长，请到设置点“重新下载离线内容”')),90000);
+      function finish(error){clearTimeout(timer);registration.removeEventListener('updatefound',observe);worker?.removeEventListener('statechange',changed);error?reject(error):resolve(registration);}
+      function changed(){if(registration.active||worker?.state==='activated')finish();else if(worker?.state==='redundant')finish(new Error(installError||'离线安装未成功，请到设置重新下载；学习记录会保留'));}
+      function observe(){worker?.removeEventListener('statechange',changed);worker=registration.installing||registration.waiting;worker?.addEventListener('statechange',changed);changed();}
+      registration.addEventListener('updatefound',observe);observe();
+    });
+  }
+  function awaitInstalled(worker){
+    if(!worker || ['installed','activated'].includes(worker.state))return Promise.resolve();
+    return new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>finish(new Error(installError||'新版下载用时较长，请稍后重试')),90000);
+      function finish(error){clearTimeout(timer);worker.removeEventListener('statechange',changed);error?reject(error):resolve();}
+      function changed(){if(['installed','activated'].includes(worker.state))finish();else if(worker.state==='redundant')finish(new Error(installError||'新版下载失败，请重试'));}
+      worker.addEventListener('statechange',changed);changed();
     });
   }
   async function checkOffline(manual=false){
     if(!('serviceWorker' in navigator)||!window.isSecureContext){offlineStatus('请通过 HTTPS 安装链接打开');return;}
     try{
       offlineStatus('正在检查离线内容…');
+      installError='';
       // An offline launch must work even when registration/update needs a network.
       if(navigator.serviceWorker.controller){
         let existing=await workerStatus(navigator.serviceWorker.controller);
-        if(!existing.ready && navigator.onLine){offlineStatus('正在补全离线内容…');existing=await workerStatus(navigator.serviceWorker.controller,'REPAIR_OFFLINE');}
+        if((manual || !existing.ready) && navigator.onLine){
+          const previousReady=existing.ready;
+          let updateError='';
+          offlineStatus('正在检查并下载离线内容…');
+          // An old worker cannot validate newly deployed assets with its old hashes.
+          // Check the new worker before repairing the old cache; leave activation to
+          // closing old windows so the current reader is never switched mid-session.
+          try{
+            swRegistration=await navigator.serviceWorker.getRegistration('./') || await navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'});
+            await swRegistration.update();
+            await awaitInstalled(swRegistration.installing);
+            if(swRegistration.waiting){
+              const next=await workerStatus(swRegistration.waiting);
+              if(next.ready){
+                offlineStatus((previousReady?'当前内容可离线使用。':'')+'新版离线内容已下载，请关闭所有系统研习窗口（包括 Safari 中的页面）后重新打开。',previousReady);
+                notify('新版已下载，请关闭所有系统研习窗口后重开');
+                return;
+              }
+            }
+          }catch(error){updateError=error.message;}
+          offlineStatus('正在重新下载离线内容…');
+          existing=await workerStatus(navigator.serviceWorker.controller,'REPAIR_OFFLINE');
+          if(!existing.ready){
+            const error=existing.error||updateError||'重新下载未完成，请保持联网后重试';
+            if(previousReady){offlineStatus('现有内容仍可离线使用。重新下载失败：'+error,true);notify(error);return;}
+            throw new Error(error);
+          }
+        }
         if(existing.ready){
           offlineStatus(`离线已就绪：240 道题及全部补充内容已保存。${navigator.onLine?'现在可以断网学习。':'当前正在离线使用。'}`,true);
           if(manual && navigator.storage?.persist)await navigator.storage.persist().catch(()=>false);
-          if(manual)notify('已检查：完整内容可离线使用');
+          if(manual)notify(navigator.onLine?'已重新下载：完整内容可离线使用':'现有内容可离线使用；重新下载需要联网');
           if(navigator.onLine)navigator.serviceWorker.getRegistration('./').then(r=>r?.update()).catch(()=>{});
           return;
         }
       }
       swRegistration=await navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'});
-      // A rejected installation must not leave an indefinite "preparing" label.
-      await Promise.race([navigator.serviceWorker.ready,new Promise((_,reject)=>setTimeout(()=>reject(new Error('尚未完成离线下载，请保持联网后重试')),25000))]);
+      // Watch this registration: a failed install must not silently time out.
+      await awaitActive(swRegistration);
       if(!navigator.serviceWorker.controller){
         await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{navigator.serviceWorker.removeEventListener('controllerchange',changed);reject(new Error('离线服务尚未接管，请重新打开应用'));},8000);function changed(){clearTimeout(timer);resolve();}navigator.serviceWorker.addEventListener('controllerchange',changed,{once:true});});
       }
@@ -217,6 +265,12 @@
     return offlineCheck;
   }
   window.addEventListener('hashchange',render);
+  if('serviceWorker' in navigator)navigator.serviceWorker.addEventListener('message',event=>{
+    if(event.data?.type==='OFFLINE_INSTALL_ERROR'&&typeof event.data.message==='string'){
+      installError=event.data.message;
+      if(!offlineReady)offlineStatus(installError);
+    }
+  });
   window.addEventListener('online',()=>prepareOffline());
   window.addEventListener('offline',()=>prepareOffline());
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')prepareOffline();});

@@ -1,0 +1,16 @@
+{
+  "id": "./",
+  "name": "系统研习 · Agent 与 AI Infra",
+  "short_name": "系统研习",
+  "description": "240 道完整解答、案例与练习，离线学习。",
+  "lang": "zh-CN",
+  "start_url": "./index.html#home",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f3f6fa",
+  "theme_color": "#132b46",
+  "icons": [
+    {"src":"./icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},
+    {"src":"./icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+  ]
+}

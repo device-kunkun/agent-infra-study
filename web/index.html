@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#132b46">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="系统研习">
+  <meta name="description" content="Agent Harness 与 AI Infra，240 道题的离线学习手册。">
+  <meta name="referrer" content="no-referrer">
+  <title>系统研习 · Agent / AI Infra</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="./icon-180.png">
+  <link rel="icon" href="./icon-192.png" type="image/png">
+  <link rel="stylesheet" href="./app.css">
+  <script src="./content.js" defer></script>
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <header class="app-header"><a class="brand" href="#home" aria-label="系统研习首页"><span class="brand-mark" aria-hidden="true">AI</span><span>系统研习<small>AGENT / AI INFRA</small></span></a><span id="offline-indicator" class="offline-indicator" role="status">准备离线内容</span></header>
+  <main id="app" tabindex="-1"><p class="loading">正在打开手册…</p><noscript>请在 Safari 中启用 JavaScript，或阅读电脑版 Markdown 手册。</noscript></main>
+  <nav class="tabbar" aria-label="主导航"><a href="#home" data-tab="home"><span aria-hidden="true">▤</span>学习</a><a href="#library" data-tab="library"><span aria-hidden="true">☷</span>目录</a><a href="#bookmarks" data-tab="bookmarks"><span aria-hidden="true">☆</span>书签</a><a href="#settings" data-tab="settings"><span aria-hidden="true">⚙</span>设置</a></nav>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <input id="import-file" type="file" accept="application/json,.json" hidden>
+</body>
+</html>

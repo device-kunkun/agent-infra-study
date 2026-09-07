@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.openai/
+.env
+.env.*
+*.log
+.DS_Store
+Thumbs.db
+work/
+coverage/

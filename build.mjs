@@ -1,0 +1,16 @@
+import {mkdir,readFile,writeFile,copyFile} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+const root=path.dirname(fileURLToPath(import.meta.url));
+const files=['index.html','app.css','app.js','content.js','manifest.webmanifest','icon-180.png','icon-192.png','icon-512.png'];
+const hashes={};
+for(const file of files)hashes[file]=createHash('sha256').update(await readFile(path.join(root,'web',file))).digest('hex');
+const version=createHash('sha256').update(JSON.stringify(hashes)).digest('hex').slice(0,16);
+let sw=await readFile(path.join(root,'sw-template.js'),'utf8');
+sw=sw.replace('__BUILD_VERSION__',version).replace('__ASSET_HASHES__',JSON.stringify(hashes));
+await mkdir(path.join(root,'dist'),{recursive:true});
+for(const file of files)await copyFile(path.join(root,'web',file),path.join(root,'dist',file));
+await writeFile(path.join(root,'dist','sw.js'),sw);
+await writeFile(path.join(root,'dist','_headers'),`/sw.js\n  Cache-Control: no-cache\n  Service-Worker-Allowed: /\n/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: no-referrer\n`);
+console.log(`Built ${files.length} offline assets, verified by SHA-256; build ${version}`);

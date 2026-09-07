@@ -179,7 +179,8 @@
     return new Promise((resolve,reject)=>{
       const channel=new MessageChannel();const timer=setTimeout(()=>{channel.port1.close();reject(new Error('下载用时较长，请稍后重试'));},type==='REPAIR_OFFLINE'?90000:12000);
       channel.port1.onmessage=e=>{clearTimeout(timer);channel.port1.close();resolve(e.data);};
-      worker.postMessage({type},[channel.port2]);
+      try{worker.postMessage({type},[channel.port2]);}
+      catch(error){clearTimeout(timer);channel.port1.close();channel.port2.close();reject(error);}
     });
   }
   function awaitActive(registration){
@@ -231,7 +232,7 @@
             }
           }catch(error){updateError=error.message;}
           offlineStatus('正在重新下载离线内容…');
-          existing=await workerStatus(navigator.serviceWorker.controller,'REPAIR_OFFLINE');
+          existing=await workerStatus(navigator.serviceWorker.controller,'REPAIR_OFFLINE').catch(error=>({ready:false,error:error.message}));
           if(!existing.ready){
             const error=existing.error||updateError||'重新下载未完成，请保持联网后重试';
             if(previousReady){offlineStatus('现有内容仍可离线使用。重新下载失败：'+error,true);notify(error);return;}

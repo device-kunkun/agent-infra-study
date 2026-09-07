@@ -9,13 +9,13 @@ const hook='globalThis.cacheTest={checkOffline, getStatus:()=>({ready:offlineRea
 assert.ok(source.includes('theme();render();prepareOffline();'));
 const testSource=source.replace('theme();render();prepareOffline();',hook);
 
-async function scenario({ready=true,online=true,waiting=false,repair={ready:true},updateFails=false,manual=true}={}){
+async function scenario({ready=true,online=true,waiting=false,repair={ready:true},repairThrows=false,updateFails=false,manual=true}={}){
   const calls=[],elements=new Map();
   const records={schema:1,read:{Q005:true},bookmarks:{Q005:true},scores:{Q005:'3'},last:'Q005',positions:{Q005:123},theme:'dark',font:20};
   let stored=JSON.stringify(records);
   const initial=stored;
   function element(id){if(!elements.has(id))elements.set(id,{textContent:'',hidden:false,addEventListener(){},classList:{toggle(){}},style:{setProperty(){}}});return elements.get(id);}
-  function worker(name,responses){return{postMessage(request,ports){calls.push(name+':'+request.type);ports[0].postMessage(responses[request.type]);ports[0].close();}};}
+  function worker(name,responses){return{postMessage(request,ports){calls.push(name+':'+request.type);if(repairThrows&&request.type==='REPAIR_OFFLINE')throw new Error('Worker channel unavailable');ports[0].postMessage(responses[request.type]);ports[0].close();}};}
   const current=worker('current',{CHECK_OFFLINE:{ready},REPAIR_OFFLINE:repair});
   const next=worker('next',{CHECK_OFFLINE:{ready:true}});
   const registration={installing:null,waiting:waiting?next:null,update:async()=>{calls.push('update');if(updateFails)throw new Error('Update network unavailable');}};
@@ -42,6 +42,10 @@ assert.match(upgrade.status.message,/新版离线内容已下载.*关闭/);
 const failed=await scenario({repair:{ready:false,error:'content.js 内容校验失败'},updateFails:true});
 assert.equal(failed.status.ready,true,'Keep the healthy old bundle usable when a new download fails');
 assert.match(failed.status.message,/重新下载失败.*content.js/);
+
+const disconnected=await scenario({repairThrows:true});
+assert.equal(disconnected.status.ready,true,'A rejected worker message must retain the healthy cache status');
+assert.match(disconnected.status.message,/Worker channel unavailable/);
 
 const offline=await scenario({online:false,manual:false});
 assert.deepEqual(offline.calls,['current:CHECK_OFFLINE']);

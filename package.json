@@ -1,6 +1,6 @@
 {
   "name": "agent-infra-study",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "240 Chinese study questions with complete answers, and an offline-first Agent / AI Infra PWA",
   "engines": {
@@ -9,6 +9,6 @@
   "scripts": {
     "build": "node build.mjs",
     "dev": "node serve.mjs",
-    "test": "node tests/offline.mjs"
+    "test": "node tests/offline.mjs && node tests/offline-client.mjs"
   }
 }
